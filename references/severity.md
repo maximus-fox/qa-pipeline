@@ -1,6 +1,5 @@
 # Severity & risk scales
 
-**Severity багов:** `critical` = потеря/утечка данных, сломан ключевой флоу или безопасность;
-`high` = крупная фича не работает; `medium` = ухудшенный UX; `low` = косметика.
+**Bug severity:** `critical` = data loss/leak, broken key flow, or security hole; `high` = a major feature doesn't work; `medium` = degraded UX; `low` = cosmetic.
 
-Находки `qa-architect` идут по своей шкале риска консолидации (низкий/средний/высокий), не смешиваются с severity багов.
+**Architect risk** (consolidation refactors) runs on its OWN scale (low / medium / high blast-radius) and is never merged into bug severity — a "high-risk refactor" is not a "critical bug".

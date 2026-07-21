@@ -1,15 +1,12 @@
-# Safety (общий)
+# Safety
 
-- Только тест-личности; префикс «ТЕСТ»; учёт созданного.
-- Никаких необратимых действий даже под тестом: платежи, реальные отправки/уведомления, mass-delete,
-  смена тарифа на реальном бизнесе, всё из «красных зон» брифа.
-- **Все роли фаз 1–4 (recon, тестировщики, architect, gate) — read-only ПО ОТНОШЕНИЮ К ПРОДУКТУ:**
-  не мутируют код проекта, прод-данные и БД — Bash/SSH/БД к проекту только на чтение (SELECT, curl GET,
-  чтение файлов), без Edit/Write в исходники, без POST/PUT/DELETE и записи в БД вне тест-личности.
-  - **Запись своих артефактов в run-folder РАЗРЕШЕНА** и не считается нарушением: роли пишут через Bash
-    (redirect/heredoc) в `~/.claude/qa-runs/<...>/` свои файлы — `qa-map.md` (recon), `qa-plan.md` (planner),
-    скриншоты `NN-screen-viewport.jpg` (браузерные роли), а оркестратор — `report-<роль>.md`. Это скретч,
-    а не продукт.
-  - **`qa-synth` (§4.9)** — единственный, кто пишет в РЕПОЗИТОРИЙ ПРОЕКТА: новые файлы под `e2e/` и, по
-    явному выбору в меню, удаляет ТЕСТ-данные. В код проекта и прод-данные больше не пишет никто.
-- SSH: макс 3 подключения подряд, батчить запросы (fail2ban на многих хостах банит после 3-4 неудачных подряд).
+Applies to every role, every environment.
+
+- **Test personas only.** Everything created is prefixed "TEST" and logged for cleanup.
+- **No irreversible actions, ever** — even under test: real payments, real sends/notifications to real people, mass-delete, tariff changes on a real business, anything in the brief's red zones.
+- **Phases 1–4 are read-only toward the PRODUCT.** Roles do not mutate the project's code, prod data, or DB. Bash/SSH/DB against the project is read-only (SELECT, GET, file reads) — no Edit/Write to sources, no POST/PUT/DELETE and no DB writes outside a test persona.
+  - **Writing artifacts to the run folder is allowed** and is not a violation: roles write their own scratch files (`qa-map.md`, `qa-plan.md`, screenshots, `report-<role>.md`) under the run folder via Bash. That's scratch, not product.
+  - **synth is the only role that writes into the project repo** — new files under `e2e/` — and, only on explicit menu choice, deletes TEST data. Nothing else writes to the repo or prod data.
+- **Real-profile drivers (real-chrome, desktop-native, android-adb) run against the user's real machine/accounts.** Extra caution: touch only the target app / the tabs you opened, never other sessions, settings, or people's data. Anything the user must do personally (log in, 2FA, grant a permission) — ask in chat and wait; never handle their credentials.
+- **SSH etiquette:** max ~3 consecutive connections, then pause; batch queries. Many hosts run fail2ban and ban after a few rapid connections.
+- **Prohibited-action classes stay prohibited even if the app offers them**: entering payment details/credentials, completing CAPTCHAs, changing security/system settings, deleting real data. If a flow requires one, the row is `blocked (red zone)`.

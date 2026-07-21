@@ -1,199 +1,109 @@
 ---
 name: qa-testing
-description: Глубокое QA веб-приложения или Mini App «злым тестировщиком» — разведка карты, прогон 4 ролями + код-аудит параллельно, ворота полноты, отчёт + регресс-тесты. Триггеры — qa, тестирование, проверь приложение, найди баги, прогон, аудит UI.
+description: Adversarial multi-agent QA for any product surface — web apps, messenger Mini Apps (Telegram/MAX), native desktop (macOS), and Android. A "mean tester" pipeline: recon → plan → parallel role attack (visual, logic, data-integrity, edge-cases + white-box code audit) → adversarial completeness gate → report + generated regression tests. Real screenshots, real clicks, real DB checks — never "looks fine". Use whenever the user wants to QA / test an app, find bugs, do a UI or UX audit, check a Mini App, verify data actually persists, or run a thorough pre-release pass. Triggers: qa, testing, test my app, find bugs, audit UI, check the mini app, does the data save, pre-release check.
 ---
 
-## Что делает
+# Mean-tester QA pipeline
 
-Конвейер «Злой тестировщик» прогоняет веб-приложение или Mini App (TMA — один из поддерживаемых случаев, не «большинство») через пять последовательных фаз — от полной разведки карты до синтеза отчёта и регресс-тестов — с промежуточными воротами полноты, которые не пускают дальше, пока не «сухо».
+Five phases. Specialized roles attack the product in parallel with different incentives; an adversarial gate refuses to finish while coverage is thin. The point is to fail the way real QA fails a product — not the way one polite agent clicks the happy path and calls it a pass.
 
 ```
-1. РАЗВЕДКА      →  2. ПЛАН        →  3. ПРОГОН (5 параллельно)    →  4. ВОРОТА        →  5. СБОРКА
-   qa-recon         qa-planner        visual / logic /                completeness        qa-synth
-   (код+браузер,    (матрица +        data-paranoid / attacker        critic →            (отчёт +
-    дизайн-сист.)    сценарии +        + architect (white-box)         догоняет, пока       регресс e2e/ +
-                     тест-личности)    каждый браузерный — со          не «сухо»)           меню выбора)
-                                       своей тест-личностью
+1. PROBE + BRIEF  →  2. RECON     →  3. PLAN     →  4. RUN (parallel)          →  5. GATE        →  6. SYNTH
+   detect envs,        recon           planner       visual / logic /              completeness      synth
+   setup menu                                        data-paranoid / attacker      (loop-until-dry)  (report +
+                                                     + architect (white-box)                          regression +
+                                                                                                      menu)
 ```
 
----
+## Phase 0 — Probe & brief
 
-## Вход (бриф)
+**Probe what's actually available** before offering anything (see `references/environments.md` → Probing). Report each environment as available / unavailable-with-reason. Only offer environments that exist — never promise a driver that isn't connected.
 
-**Обязательные поля брифа:**
+Then raise ONE setup menu (`AskUserQuestion`, multi-select where natural). Three preset modes plus custom:
 
-- **base URL(s)** — один или несколько адресов (prod / staging / dev). Если URL недоступен — см. Fast-fail.
-- **Пул тест-личностей** — минимум 4 аккаунта (по одному на каждую браузерную роль), у каждого рабочая email/cookie-сессия или токен в localStorage. Авто-регистрация через TG/MAX OAuth-верификацию не воспроизводится в браузере (§5.8 спеки), поэтому **личности готовит человек заранее** — планировщик их только распределяет. Если личностей меньше 4, планировщик сериализует пишущие роли (`data-paranoid`, `attacker`) на общий аккаунт, читающие (`visual`, `logic`) пускает параллельно — решение фиксируется в `qa-plan.md`.
-- **Доступ к коду** — путь к корню репозитория на локальной ФС (нужен `qa-recon` и `qa-architect`). При отсутствии: разведка работает только живым обходом (чёрный ящик), white-box части помечаются непокрытыми; `qa-architect` отключается явно с пометкой в отчёте.
-- **Read-only доступ к БД** — SSH-хост + учётные данные SELECT-only (нужен `qa-data-paranoid`). При отсутствии: ось проверки данных деградирует явно (только фронт, БД не верифицируется).
-- **Красные зоны** — что запрещено трогать даже в тесте (платежи, mass-delete, смена тарифа реального бизнеса, конкретные ресурсы). По умолчанию — всё необратимое.
-- **Режим** — `smoke` (1 круг ворот, быстрый прогон) или `deep` (до 3 кругов ворот, полное покрытие). По умолчанию `deep`.
+- **Smoke** — 1 gate round, reading roles + one writing pass, key screens only. Fast confidence check.
+- **Deep** (default) — up to 3 gate rounds, all roles, full matrix.
+- **Custom** — reveal the toggles: which **roles** (visual / logic / data / attacker / code-audit), which **environments** (from the probe), **depth** (gate rounds), **red zones**, whether to capture a screenshot per step.
 
-> **ПРАВИЛО деградации:** чего в брифе нет — соответствующая ось деградирует ЯВНО, не молча. Отсутствие фиксируется в `report.md` секцией «Непокрытые оси».
+If the environment can't ask (headless, scheduled, sub-agent run) — don't stall: pick **Deep** on the probed environments, and record every assumption as the first lines of the report. The user keeps the right to choose; absence of an answer is not a choice (do not run destructive rows on assumption).
 
----
+**Brief fields** (ask only for what the chosen modes need; missing → degrade that axis explicitly, never silently):
 
-## Детект режима
+- **target(s)** — URL(s), and/or app name for desktop, and/or Mini App bot handle. Fast-fail if a URL target answers nothing.
+- **personas** — test accounts with working sessions/tokens (one per browser role ideally). Messenger OAuth signup can't be reproduced headlessly, so the human prepares personas; the planner only distributes them. Fewer than needed → writing roles serialize (planner decides). Zero → guest smoke of public surfaces only.
+- **code path** — repo root (for recon + architect). Absent → black-box only, white-box marked uncovered, architect off.
+- **DB read access** — SSH host + SELECT-only creds (for data-paranoid). Absent → data axis degrades to UI-consistency only.
+- **red zones** — what must never be touched even in test (default: everything irreversible).
 
-Дирижёр определяет движок исполнения **до запуска фаз**:
+> **Degradation rule:** whatever the brief lacks, the matching axis degrades LOUDLY — recorded in `report.md` under "NOT-covered axes". Never a silent 0%.
 
-**Условие Workflow-режима:** активен ultracode ИЛИ пользователь в брифе явно написал «оркестрация» / «workflow».
+## Phase 0.5 — Run folder & dispatch model
 
-- **Workflow-режим** → дирижёр создаёт run-folder (таймстамп ставит дирижёр — Workflow-скрипт не умеет `Date.now()`), затем вызывает:
-  ```
-  Workflow({ scriptPath: "~/.claude/skills/qa-testing/qa-pipeline.workflow.js", args: { runFolder, brief } })
-  ```
-  Скрипт реализует детерминированную параллельность фазы 3, настоящий `loop-until-dry` для ворот полноты и масштаб числа агентов по бюджету.
-
-- **Обычный режим** (по умолчанию) → дирижёр сам дёргает агентов через Agent-tool: фазы 1 и 2 последовательно, фаза 3 — малыми параллельными пачками (не более того, что позволяет бюджет), фаза 4 — циклом вручную.
-
-**Логика фаз идентична в обоих режимах; различается только движок параллелизма.**
-
----
-
-## Run-folder
-
-Дирижёр создаёт папку **до** передачи управления агентам или Workflow-скрипту:
+The orchestrator creates the run folder BEFORE handing off:
 
 ```
-~/.claude/qa-runs/<проект>-<timestamp>/
+~/.claude/qa-runs/<project>-<YYYYMMDD-HHMMSS>/
 ```
 
-где `<проект>` — короткое имя (домен или директория), `<timestamp>` — формат `YYYYMMDD-HHMMSS` (ставит дирижёр).
+(The orchestrator stamps the timestamp — workflow scripts can't call `Date.now()`.)
 
-Содержимое run-folder:
+**How roles are dispatched — the portable part.** Role definitions live in this skill at `references/roles/<role>.md`. The orchestrator runs each role as a general-purpose sub-agent, passing:
+1. the contents of `references/roles/<role>.md` as the role's instructions,
+2. the absolute skill directory (so the role can read its driver + safety files),
+3. the run folder, the brief slice it needs, and its assigned rows.
 
-| Файл | Кто создаёт | Что содержит |
-|------|-------------|--------------|
-| `qa-map.md` | `qa-recon` | Полная карта продукта: экраны, контролы, журнеи, viewports, дизайн-система |
-| `qa-plan.md` | `qa-planner` | Матрица покрытия, распределение ролей, назначение личностей |
-| `report-<роль>.md` | дирижёр (персистит вывод роли) | Сырой вывод каждой роли фазы 3 (`report-visual.md`, `report-logic.md`, `report-data-paranoid.md`, `report-attacker.md`, `report-architect.md`) — вход для ворот и сборки |
-| `report.md` | `qa-synth` | Итоговый отчёт: баги, визуал, код-здоровье, покрытие, ТЕСТ-данные |
-| `NN-screen-viewport.jpg` | Браузерные роли | Скрины (через Bash-драйвер или Playwright-MCP) |
+This keeps the skill **self-contained**: it works for anyone who installs it, with no separate agent registration. (If a host happens to have matching registered sub-agents, the orchestrator may use those as an optimization — but the files are the source of truth.)
 
-**Регресс-тесты** — в `e2e/` репозитория проекта (пишет только `qa-synth`).
+| File | Author | Contents |
+|------|--------|----------|
+| `qa-map.md` | recon | Full product map: screens, controls, journeys, viewports, design system |
+| `qa-plan.md` | planner | Coverage matrix, role/persona/environment assignment, credentials & red-zone blocks |
+| `report-<role>.md` | orchestrator (persists each role's output) | Raw Phase-3 output per role — input to gate and synth |
+| `report.md` | synth | Final report |
+| `<NN>-<screen>-<viewport>.jpg` | browser/desktop/mobile roles | Screenshots via the assigned driver |
 
----
+Regression tests go to `e2e/` in the project repo (synth only).
 
-## Фазы
+## Execution engine
 
-### Фаза 1 — Разведка
+**Workflow mode** (when ultracode is on, or the user asks for "workflow"/"orchestration"): the orchestrator calls `qa-pipeline.workflow.js` for deterministic Phase-3 parallelism, real loop-until-dry, and agent-count scaling by budget.
 
-**Агент:** `qa-recon`
+**Normal mode** (default): the orchestrator drives roles via the Agent tool — Phases 1–2 sequential, Phase 3 in small parallel batches (as budget allows), Phase 4 looped by hand.
 
-**Вход:** base URL(s), путь к коду (если есть), тест-доступ (если есть).
+Phase logic is identical in both; only the parallelism engine differs.
 
-**Метод:** читает код (роуты, компоненты, обработчики, миграции БД) → знает, что *должно* быть; параллельно живой обход в браузере → видит, что *есть*; сверяет. Viewport-матрицу выводит из проекта: TMA → реальные размеры целевых телефонов; веб → брейкпоинты из CSS/Tailwind-конфига + 1–2 реальных «узких» размера. Никаких захардкоженных чисел без нужды.
+## Phases (detail in `references/roles/<role>.md` — read the role file before dispatching it)
 
-Браузер-драйвер: см. `references/browser-driver.md` — сначала Playwright-MCP, при сбое — Bash-драйвер с системным Chrome.
-
-**Выход: `qa-map.md`** — каждый экран; каждая кнопка/контрол; каждая логическая цепочка; кросс-эффекты; facade-поверхности (file:line); матрица viewport'ов; список ролей/состояний (unverified / verified / operator / admin…); **дизайн-система проекта** (CSS-переменные, Tailwind-конфиг, палитра, шрифты, отступы, каталог компонентов).
-
-На крупном проекте разведчик дробится на под-агентов `code-recon` + `live-recon`, которые сводятся в общий `qa-map.md`. Деградация при отсутствии кода или браузера — фиксируется явно в map.
-
----
-
-### Фаза 2 — План
-
-**Агент:** `qa-planner`
-
-**Вход:** `qa-map.md` из Фазы 1.
-
-**Выход: `qa-plan.md`** — матрица покрытия (строка = экран/контрол/цепочка, статус-плейсхолдер); сквозные журнеи (lifecycle, multi-actor); **назначение отдельной тест-личности каждой браузерной роли**; распределение по ролям; красные зоны. Если личностей меньше ролей — решение о сериализации записывается здесь.
-
----
-
-### Фаза 3 — Прогон
-
-**Запускается параллельно** (5 агентов одновременно):
-
-#### Браузерные роли (4 агента, каждый — под своей тест-личностью):
-
-- **`qa-visual-critic`** — глазами платящего клиента. Форсит реальный скриншот (по рецепту `references/browser-driver.md`). Если рендер реально не вышел — кричит «⚠️ВИЗУАЛ НЕ ПОКРЫТ», не ставит молча ОК. Судит **против дизайн-системы проекта** (из `qa-map.md`): на каждый ключевой экран × viewport — рубрика (иерархия / ритм 8pt / типографика / измеренный контраст WCAG / выравнивание / пустые-загрузка-ошибка состояния / тач-цели ≥44px / консистентность / «современно vs устарело») + **обязательные ≥3 конкретных улучшения в стиле проекта** (не generic — это первичный выход, не опция).
-
-- **`qa-logic`** — сквозные журнеи, «весь проводник»: что ломается между шагами, конфликты состояний, отмена-и-снова, refresh/back посреди флоу, граничные переходы. Для мульти-актор журнеев получает весь набор личностей, а не одну.
-
-- **`qa-data-paranoid`** — после каждого действия лезет в БД (read-only SSH, SELECT, батчить, макс 3 SSH-подключения подряд): реально ли записалось, кросс-эффекты между экранами/пользователями, утечки прав (подмена ID/slug в URL — видит ли чужие данные).
-
-- **`qa-attacker`** — edge cases: двойной клик, пусто, `<script>alert(1)</script>`, очень длинный текст, кривой/битый ввод, нет сети, гонки.
-
-**Каждая браузерная роль возвращает:** строки матрицы со статусом (`tested / failed / skipped / blocked` + причина), баги (`severity` · ось · шаги · ожидал/получил · доказательство), артефакты (скрины/SQL/консоль). Статус «tested/ОК» ставится только после реального клика + проверки результата — никаких «ОК» по snapshot.
-
-> **Передача выводов между фазами (важно — роли read-only, сами в файлы не пишут):** дирижёр собирает текстовый вывод каждой роли и **сохраняет его в `{run-folder}/report-<роль>.md`** под канонными именами (`report-visual.md`, `report-logic.md`, `report-data-paranoid.md`, `report-attacker.md`, `report-architect.md`), а затем передаёт эти выводы (текстом и/или как пути к файлам) в `qa-completeness-gate` и `qa-synth`. В Workflow-режиме выводы передаются текстом через аргументы (см. `qa-pipeline.workflow.js`). Так ворота и сборка гарантированно видят реальные результаты ролей, а не пустоту.
-
-#### White-box роль (параллельно браузерным):
-
-- **`qa-architect`** — читает код без браузера (Read, Grep, Glob, Bash read-only). Ищет: дублирование логики, мёртвый код, несколько источников правды на одну сущность, кандидатов на консолидацию, проблемы нормализации БД. Каждая находка: file:line + описание + предлагаемая консолидация + риск (низкий/средний/высокий). Это аудит всего продукта по карте, не diff/PR-ревью. При отсутствии доступа к коду — отключается явно.
-
----
-
-### Фаза 4 — Ворота полноты
-
-**Агент:** `qa-completeness-gate`
-
-**Цикл (loop-until-dry):**
-
-1. Смотрит отчёты фазы 3 — какой экран не отрендерен, какой «ОК» без реального клика/проверки в БД, что пропущено.
-2. Враждебно перепроверяет выборку «tested».
-3. Если есть пробелы — формирует до-задание и передаёт нужным ролям новые инстансы.
-4. Повторяет, **пока два круга подряд не дадут ничего нового** («сухо»).
-
-**Потолок циклов:** `smoke` = 1 круг, `deep` = 3 круга — что раньше: потолок или «сухо». Без потолка loop-until-dry на большом приложении уходит в разнос. Если исчерпан бюджет/потолок до «сухо» — фиксирует список непройденных строк матрицы для следующего прогона (чекпоинт-резюме).
-
-**Персистирование повторных кругов:** дирижёр **дозаписывает** вывод повторного круга в `{run-folder}/report-<роль>.md` через разделитель `--- Круг N ---` (append, не replace), где N — номер круга. В Workflow-режиме это идёт через аргументы скрипта, а не прямой записью.
-
----
-
-### Фаза 5 — Сборка
-
-**Агент:** `qa-synth`
-
-**Выходы:**
-
-1. **`report.md`** в run-folder:
-   - Баги по severity (см. `references/severity.md`)
-   - Data-integrity цепочки
-   - Facade-находки
-   - Секция «Улучшения визуала» (в стиле проекта)
-   - Секция «Код-здоровье» (дубли/рефактор/консолидация от `qa-architect`)
-   - Журнеи (walked/partial/blocked)
-   - % функционального **и** визуального покрытия
-   - Непокрытые оси (деградации)
-   - Список созданных ТЕСТ-данных для очистки
-   - Чекпоинт-резюме (если конвейер остановлен досрочно)
-
-2. **Регресс-тесты** — конвертирует пройденные/упавшие сценарии в постоянные Playwright `e2e/`-файлы в репозитории проекта (desktop/mobile/multi-user).
-
-3. **Интерактивное меню рекомендаций** — `qa-synth` формирует структурированный список кандидатов меню и ОТДАЁТ его текстом в своём выводе. `AskUserQuestion` (мультивыбор, правило `feedback_offer_multi_select`) **поднимает дирижёр** — в обычном режиме сам, в Workflow-режиме основной агент после возврата скрипта. Субагенты и `qa-synth` `AskUserQuestion` не вызывают. Кандидаты:
-   - Починить баг X
-   - Применить визуал-улучшение Y (→ skill `frontend-design`)
-   - Провести рефактор-консолидацию Z (→ `/simplify` или `/code-review --fix`)
-   - Удалить созданные ТЕСТ-данные
-
-   Конвейер только находит и предлагает; применение — отдельный шаг по выбору пользователя. Отдельного агента-автоприменения визуальных улучшений нет — не ссылаться на несуществующие агенты.
-
-`qa-synth` — единственный, кто пишет в РЕПОЗИТОРИЙ ПРОЕКТА (новые файлы под `e2e/`) и удаляет ТЕСТ-данные по выбору в меню. Остальные роли read-only по отношению к продукту, но свои артефакты в run-folder (`qa-map.md`, `qa-plan.md`, скриншоты) пишут сами через Bash — это скретч, не продукт. Исходники и прод-данные не трогает никто, кроме e2e-тестов от qa-synth.
-
----
+1. **Recon** — `roles/recon.md`. Reads code (what should exist) + walks the live app via the assigned driver (what does exist), reconciles → `qa-map.md`.
+2. **Plan** — `roles/planner.md`. Map → coverage matrix; assigns role + persona + **environment** per row; credentials and red zones as machine-readable blocks in `qa-plan.md`.
+3. **Run** (parallel) — the four browser/app roles each under their persona and row-assigned driver, plus the white-box audit:
+   - `roles/visual-critic.md` — real screenshots per viewport, judged against the project's own design system, ≥3 improvements per screen.
+   - `roles/logic.md` — end-to-end journeys, state conflicts, interruptions, multi-actor.
+   - `roles/data-paranoid.md` — DB verified after every action; privilege isolation.
+   - `roles/attacker.md` — edge cases and input abuse.
+   - `roles/architect.md` — white-box code health (no browser).
+   The orchestrator saves each role's output to `report-<role>.md` (roles are read-only toward the product; the orchestrator persists their text) and passes those to the gate and synth.
+4. **Gate** — `roles/completeness-gate.md`. Loop-until-dry: hunts gaps and "OK without a real click", dispatches follow-up work to the right roles, stops when two rounds come back dry or the cap (smoke 1 / deep 3) hits. Re-round output is appended to `report-<role>.md` under `--- Round N ---`.
+5. **Synth** — `roles/synth.md`. Merges into `report.md`, generates regression tests in the project's own test harness, emits a recommendations menu as text. The orchestrator (not synth) raises `AskUserQuestion` for the menu.
 
 ## Fast-fail
 
-Конвейер **останавливается немедленно** с явным сообщением пользователю (не выдаёт тихий «0% покрытия») в двух случаях:
+Stop immediately with a clear message (never a silent "0% coverage") when:
 
-1. **base URL недоступен** — дирижёр делает HEAD/GET запрос к каждому URL из брифа до запуска разведчика; если ни один не отвечает → стоп с диагностикой («не отвечает: <url>, HTTP: <код>»).
+1. **All URL targets unreachable** — HEAD/GET each before recon; none answers → stop with diagnostics.
+2. **All personas fail to log in** — none can enter → stop, listing each persona and reason.
 
-2. **Вход не удался для ВСЕХ личностей** — если ни одна из тест-личностей не может войти в приложение (сессии протухли, токены невалидны) → стоп с перечислением личностей и причин («личность X: 401, Y: cookie expired»).
+Partial availability (some personas / some targets / some environments down) does NOT stop the run — it's recorded as degradation in `qa-plan.md` before Phase 3.
 
-Если недоступна часть личностей или часть URL — конвейер **не стопается**, но фиксирует деградацию явно в `qa-plan.md` перед стартом Фазы 3.
+## Safety
 
----
+Full rules in `references/safety.md`. In short: test personas only, "TEST" prefix, log everything created; no irreversible actions or red-zone touches; Phases 1–4 read-only toward the product; only synth writes to the repo (`e2e/`) and deletes TEST data on menu choice; real-profile drivers (real-chrome / desktop / mobile) run on the user's real machine — extra care, credentials handled by the user alone.
 
-## Безопасность
+## Files
 
-Подробные правила — в `references/safety.md`. Кратко:
-
-- Только тест-личности; все данные префиксуются «ТЕСТ»; учёт созданного.
-- Никаких необратимых действий: платежи, реальные уведомления, mass-delete, смена тарифа — всё из «красных зон» запрещено.
-- **Все роли фаз 1–4 — read-only по отношению к продукту:** не мутируют код/прод-данные/БД (Bash/SSH/БД к проекту только на чтение, без Edit/Write в исходники, без записи в БД вне тест-личности). СВОИ артефакты в run-folder (`qa-map.md`, `qa-plan.md`, скриншоты, `report-<роль>.md`) писать через Bash — разрешено (это скретч, не продукт). Подробности — `references/safety.md`.
-- **`qa-synth`** — единственный, кто пишет в репозиторий проекта (`e2e/`) и удаляет ТЕСТ-данные по выбору в меню.
-- SSH: макс 3 подключения подряд, батчить запросы (правило fail2ban).
+- `references/environments.md` — environment decision table, probing, Mini App fidelity levels
+- `references/drivers/*.md` — one per environment (browser-devtools, real-chrome, desktop-native, android-adb, windows)
+- `references/roles/*.md` — the nine role definitions (source of truth for dispatch)
+- `references/safety.md`, `references/severity.md`
+- `qa-pipeline.workflow.js` — deterministic engine for workflow mode
+- `fixtures/mini-app/` — tiny sample app to smoke-test the pipeline itself

@@ -1,68 +1,85 @@
 export const meta = {
   name: 'qa-pipeline',
-  description: 'Конвейер «Злой тестировщик»: pre-flight → разведка → план → прогон ролями параллельно → ворота полноты → сборка',
+  description: 'Mean-tester QA: pre-flight → recon → plan → parallel role attack → completeness gate → synth',
   phases: [
-    { title: 'Pre-flight' }, { title: 'Разведка' }, { title: 'План' },
-    { title: 'Прогон' }, { title: 'Ворота' }, { title: 'Сборка' },
+    { title: 'Pre-flight' }, { title: 'Recon' }, { title: 'Plan' },
+    { title: 'Run' }, { title: 'Gate' }, { title: 'Synth' },
   ],
 }
-// args = { baseUrl, runFolder, identities, mode, repoRoot, dbAccess, redZones }
+// args = { targets, runFolder, skillDir, personas, mode, repoRoot, dbAccess, redZones, environments, roles }
+//   skillDir     — absolute path to this installed skill (roles/drivers/safety live under it)
+//   environments — which drivers are available/chosen this run (['browser-devtools','real-chrome',...])
+//   roles        — which roles to run (defaults to all five below)
 
-// Проекции брифа (минимизация утечки секретов в логи): identities/dbAccess идут ТОЛЬКО тем, кому нужны
-// для входа/назначения (recon — чтобы залогиниться; planner — чтобы распределить). Роли прогона читают
-// свою личность и доступ к БД из qa-plan.md (на диске в runFolder), а не из аргументов/логов.
-const reconBrief = JSON.stringify({ baseUrl: args.baseUrl, runFolder: args.runFolder, repoRoot: args.repoRoot, mode: args.mode, identities: args.identities, dbAccess: args.dbAccess, redZones: args.redZones })
-const plannerBrief = reconBrief
-const roleBrief = JSON.stringify({ baseUrl: args.baseUrl, runFolder: args.runFolder, mode: args.mode })
-const synthBrief = JSON.stringify({ runFolder: args.runFolder, mode: args.mode, repoRoot: args.repoRoot })
+// Roles are dispatched by FILE, not by registered agentType — that's what makes the skill portable.
+// Each sub-agent is told to first read its role definition, then act. If the host has a matching
+// registered sub-agent it may be used instead, but the files under references/roles/ are the source of truth.
+const ALL_ROLES = [
+  ['visual-critic', 'visual'], ['logic', 'logic'],
+  ['data-paranoid', 'data'], ['attacker', 'attacker'], ['architect', 'architect'],
+]
+const chosen = args.roles && args.roles.length
+  ? ALL_ROLES.filter(([slug]) => args.roles.includes(slug))
+  : ALL_ROLES
 
-// Pre-flight fast-fail (§5.9): доступность URL + наличие тест-личностей. Делает агент (в JS нет Bash).
+// Secret hygiene: personas/dbAccess go ONLY to recon (to log in) and planner (to distribute). Run roles
+// read their persona + DB access from qa-plan.md on disk in runFolder, never from args/logs.
+const setupBrief = JSON.stringify({ targets: args.targets, runFolder: args.runFolder, skillDir: args.skillDir, repoRoot: args.repoRoot, mode: args.mode, personas: args.personas, dbAccess: args.dbAccess, redZones: args.redZones, environments: args.environments })
+const roleBrief = JSON.stringify({ targets: args.targets, runFolder: args.runFolder, skillDir: args.skillDir, mode: args.mode, environments: args.environments })
+const synthBrief = JSON.stringify({ runFolder: args.runFolder, skillDir: args.skillDir, mode: args.mode, repoRoot: args.repoRoot })
+
+// dispatch(roleSlug, task, opts): read the role file, then do the task.
+const role = (slug) => `${args.skillDir}/references/roles/${slug}.md`
+const dispatch = (slug, task, opts) =>
+  agent(`First read your full role definition at ${role(slug)} and the files it references (drivers under ${args.skillDir}/references/drivers/, ${args.skillDir}/references/safety.md). Then perform this task strictly in that role. ${task}`,
+    { agentType: 'general-purpose', label: opts.label, phase: opts.phase, schema: opts.schema })
+
+// Pre-flight fast-fail: URL reachability + personas present. Done by an agent (no Bash in JS).
 phase('Pre-flight')
 const PRE = { type: 'object', properties: { ok: { type: 'boolean' }, reason: { type: 'string' } }, required: ['ok'] }
-const pre = await agent(
-  `Pre-flight проверка перед QA-прогоном. Бриф: ${reconBrief}. Сделай: (1) curl -sI --max-time 8 к baseUrl — отвечает ли (любой 2xx/3xx/401/403 = жив; таймаут/ECONNREFUSED = мёртв); (2) проверь, что identities — непустой массив. Верни {ok:false, reason} если URL мёртв ИЛИ личностей 0; иначе {ok:true}. Это read-only проверка.`,
-  { agentType: 'qa-recon', label: 'preflight', phase: 'Pre-flight', schema: PRE })
+const pre = await dispatch('recon',
+  `Pre-flight only (do NOT map yet). Brief: ${setupBrief}. (1) curl -sI --max-time 8 each URL target — alive if any 2xx/3xx/401/403; timeout/ECONNREFUSED = dead. (2) confirm personas is a non-empty array OR the mode is a guest smoke. Return {ok:false, reason} if every URL is dead OR (personas empty AND not guest smoke); else {ok:true}. Read-only.`,
+  { label: 'preflight', phase: 'Pre-flight', schema: PRE })
 if (!pre || !pre.ok) {
-  return { aborted: true, reason: (pre && pre.reason) || 'pre-flight не прошёл (URL недоступен или нет тест-личностей)' }
+  return { aborted: true, reason: (pre && pre.reason) || 'pre-flight failed (target unreachable or no personas)' }
 }
 
-phase('Разведка')
-const map = await agent(`Разведай продукт. Бриф: ${reconBrief}. Запиши qa-map.md в runFolder, верни путь + сводку.`,
-  { agentType: 'qa-recon', label: 'recon' })
-phase('План')
-const plan = await agent(`Построй qa-plan.md из карты: ${map}. Бриф: ${plannerBrief}. Тест-личности и доступ к БД пропиши внутри qa-plan.md (роли прочитают оттуда, а не из аргументов).`,
-  { agentType: 'qa-planner', label: 'planner' })
+phase('Recon')
+const map = await dispatch('recon',
+  `Map the product. Brief: ${setupBrief}. Use the driver matching each chosen environment (see environments.md). Write qa-map.md into runFolder; return its path + a summary.`,
+  { label: 'recon', phase: 'Recon' })
 
-phase('Прогон')
-const ROLES = [
-  ['qa-visual-critic', 'visual'], ['qa-logic', 'logic'],
-  ['qa-data-paranoid', 'data'], ['qa-attacker', 'attacker'], ['qa-architect', 'architect'],
-]
+phase('Plan')
+const plan = await dispatch('planner',
+  `Build qa-plan.md from the map: ${map}. Brief: ${setupBrief}. Assign role + persona + environment per row. Put personas and DB access INSIDE qa-plan.md (roles read them from there, not from args).`,
+  { label: 'planner', phase: 'Plan' })
+
+phase('Run')
 const maxRounds = args.mode === 'deep' ? 3 : 1
 const rounds = []
 let dryStreak = 0, gap = plan
-// «Сухо» = ДВА круга подряд без новых находок (§4.8/§5.9). dryStreak считает подряд идущие «полные» вердикты.
+// "Dry" = TWO consecutive rounds with nothing new. dryStreak counts consecutive complete verdicts.
 for (let r = 0; r < maxRounds && dryStreak < 2; r++) {
-  const found = await parallel(ROLES.map(([t, l]) => () =>
-    agent(`Прогон по плану/гэпу: ${gap}. Бриф: ${roleBrief}. Свою тест-личность и доступ к БД возьми из qa-plan.md в runFolder.`,
-      { agentType: t, label: `${l}#${r}`, phase: 'Прогон' })))
-  // Сохраняем привязку вывод↔роль даже при частичном провале (output:null = роль упала) — gate/synth видят, кто что дал.
-  const labelled = ROLES.map(([t, l], i) => ({ role: l, output: found[i] || null }))
+  const found = await parallel(chosen.map(([slug, label]) => () =>
+    dispatch(slug,
+      `Run against the plan/gap: ${gap}. Brief: ${roleBrief}. Take your persona + DB access from qa-plan.md in runFolder. Use the driver for your row's environment.`,
+      { label: `${label}#${r}`, phase: 'Run' })))
+  const labelled = chosen.map(([, label], i) => ({ role: label, output: found[i] || null }))
   rounds.push(labelled)
-  phase('Ворота')
-  const verdict = await agent(
-    `Оцени полноту прогона. Бриф: ${synthBrief}. Выводы ролей по кругам (с метками роли): ${JSON.stringify(rounds)}. План: ${plan}. Матрицу и роль-отчёты читай из runFolder. Верни {complete, gap} (gap обязателен: если пробелов нет — пустая строка).`,
-    { agentType: 'qa-completeness-gate', label: `gate#${r}`, phase: 'Ворота',
+
+  phase('Gate')
+  const verdict = await dispatch('completeness-gate',
+    `Judge run completeness. Brief: ${synthBrief}. Round outputs (role-labelled): ${JSON.stringify(rounds)}. Plan: ${plan}. Read the matrix and per-role reports from runFolder. Return {complete, gap} (gap required: empty string if no gaps).`,
+    { label: `gate#${r}`, phase: 'Gate',
       schema: { type: 'object', properties: { complete: { type: 'boolean' }, gap: { type: 'string' } }, required: ['complete', 'gap'] } })
-  // Полно ИЛИ нет gap → засчитываем «сухой» круг. Иначе сбрасываем streak и идём по новому gap.
   if (!verdict || verdict.complete || !verdict.gap) { dryStreak++ } else { dryStreak = 0; gap = verdict.gap }
 }
 
-phase('Сборка')
-// qa-synth собирает report.md + регресс-тесты (с САНИТИЗАЦИЕЙ токенов) + СПИСОК кандидатов меню.
-// AskUserQuestion НЕ вызывается здесь: субагент не задаёт интерактивных вопросов. Меню поднимает
-// вызывающий (дирижёр / основной агент) после возврата воркфлоу, используя кандидатов из отчёта.
-const report = await agent(
-  `Собери report.md + регресс-тесты (ОБЯЗАТЕЛЬНО санитизируй токены/секреты в e2e-файлах) + структурированный список кандидатов меню рекомендаций. Бриф: ${synthBrief}. Выводы ролей: ${JSON.stringify(rounds)}. Роль-отчёты читай из runFolder. Верни путь к report.md и кандидатов меню.`,
-  { agentType: 'qa-synth', label: 'synth', phase: 'Сборка' })
-return { report, rounds: rounds.length, note: 'Меню рекомендаций (AskUserQuestion) поднимает вызывающий после возврата воркфлоу — субагенты интерактивные вопросы не задают.' }
+phase('Synth')
+// synth builds report.md + regression tests (SANITIZE tokens in e2e files) + the menu-candidate list.
+// AskUserQuestion is NOT called here — the caller (orchestrator) raises the menu after the workflow returns.
+const report = await dispatch('synth',
+  `Build report.md + regression tests (MUST sanitize tokens/secrets in e2e files) + a structured recommendations-menu candidate list. Brief: ${synthBrief}. Role outputs: ${JSON.stringify(rounds)}. Read per-role reports from runFolder. Return the report.md path and the menu candidates.`,
+  { label: 'synth', phase: 'Synth' })
+
+return { report, rounds: rounds.length, note: 'Recommendations menu (AskUserQuestion) is raised by the caller after the workflow returns — sub-agents do not ask interactive questions.' }
