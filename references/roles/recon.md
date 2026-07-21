@@ -19,6 +19,8 @@ You are a read-only scout. Build an exhaustive map of the product without changi
 
 **(d) Reconcile** code-vs-live: in code but not visible (dead/conditional?), visible but not in code (unrecognized route/iframe?), facade suspects → into the map for Phase 3.
 
+**(d.1) Change focus (optional).** If the brief includes a "focus on what changed" scope (a git diff, changed files, a feature area), still map the whole product, but **tag each screen/route as touched or untouched** by that change (for a git diff: `git diff --name-only <base>` → which routes/components/migrations it hits). The planner uses these tags to test changed surfaces first. Map everything; prioritize the delta.
+
 **(e) Performance baseline (optional):** `npx lighthouse <url> --output json --only-categories performance` on the main page + one heavy screen → LCP/CLS/TTI/total-byte-weight into the map. If unavailable — create the section anyway with "⚠️ LIGHTHOUSE UNAVAILABLE".
 
 ## Output: qa-map.md — all sections mandatory

@@ -15,6 +15,8 @@ One row = one checkable item:
 
 Rules: every screen × viewport = a visual-critic row; every DB-writing action = a data-paranoid row; facade suspects = rows flagged `facade`; globally-visible surfaces (catalog, promo codes) = rows flagged `serialize`; each row gets the **environment** whose driver will execute it (from the brief's chosen environments; see `references/environments.md`).
 
+**Change-focus priority (if recon tagged touched/untouched):** order the matrix so touched surfaces come first, and in `smoke` mode cover the touched set fully before spending budget on untouched screens. Never silently DROP untouched rows — mark them `deferred (unchanged)` so coverage math stays honest; the user asked to focus, not to hide.
+
 ## Journeys
 
 From the map's chains: multi-actor sequences (e.g. user creates → operator processes → user sees the update → admin audits). Template per journey: actors, steps, expected cross-effects, owner = logic (gets the WHOLE persona pool), status pending.
@@ -24,7 +26,7 @@ From the map's chains: multi-actor sequences (e.g. user creates → operator pro
 - Pool ≥ writing roles → each role its own account, all parallel.
 - Pool smaller → writing roles (data-paranoid, attacker) serialize on a shared account; reading roles (visual-critic, logic) stay parallel. Record the decision.
 - Zero personas (guest smoke) → only public surfaces; every auth-gated row `blocked (no persona)` — planned honestly, not silently dropped.
-- Environment concurrency: real-chrome / desktop-native / android-adb are ONE-SEAT drivers — rows on them serialize regardless of accounts; browser-devtools parallelizes freely.
+- Environment concurrency: real-chrome / desktop-native / mobile are ONE-SEAT drivers — rows on them serialize regardless of accounts; browser-devtools parallelizes freely.
 - Multi-actor journeys: logic switches personas mid-journey.
 
 ## Secrets & access into qa-plan.md (not into CLI args/logs)

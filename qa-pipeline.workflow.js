@@ -6,10 +6,11 @@ export const meta = {
     { title: 'Run' }, { title: 'Gate' }, { title: 'Synth' },
   ],
 }
-// args = { targets, runFolder, skillDir, personas, mode, repoRoot, dbAccess, redZones, environments, roles }
+// args = { targets, runFolder, skillDir, personas, mode, repoRoot, dbAccess, redZones, environments, roles, changeScope }
 //   skillDir     — absolute path to this installed skill (roles/drivers/safety live under it)
-//   environments — which drivers are available/chosen this run (['browser-devtools','real-chrome',...])
+//   environments — which drivers are available/chosen this run (['browser-devtools','real-chrome','mobile','windows',...])
 //   roles        — which roles to run (defaults to all five below)
+//   changeScope  — optional "focus on what changed" (git base ref, changed paths, or a feature area); '' = test everything
 
 // Roles are dispatched by FILE, not by registered agentType — that's what makes the skill portable.
 // Each sub-agent is told to first read its role definition, then act. If the host has a matching
@@ -24,7 +25,7 @@ const chosen = args.roles && args.roles.length
 
 // Secret hygiene: personas/dbAccess go ONLY to recon (to log in) and planner (to distribute). Run roles
 // read their persona + DB access from qa-plan.md on disk in runFolder, never from args/logs.
-const setupBrief = JSON.stringify({ targets: args.targets, runFolder: args.runFolder, skillDir: args.skillDir, repoRoot: args.repoRoot, mode: args.mode, personas: args.personas, dbAccess: args.dbAccess, redZones: args.redZones, environments: args.environments })
+const setupBrief = JSON.stringify({ targets: args.targets, runFolder: args.runFolder, skillDir: args.skillDir, repoRoot: args.repoRoot, mode: args.mode, personas: args.personas, dbAccess: args.dbAccess, redZones: args.redZones, environments: args.environments, changeScope: args.changeScope })
 const roleBrief = JSON.stringify({ targets: args.targets, runFolder: args.runFolder, skillDir: args.skillDir, mode: args.mode, environments: args.environments })
 const synthBrief = JSON.stringify({ runFolder: args.runFolder, skillDir: args.skillDir, mode: args.mode, repoRoot: args.repoRoot })
 

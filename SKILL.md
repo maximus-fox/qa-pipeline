@@ -1,6 +1,6 @@
 ---
 name: qa-testing
-description: Adversarial multi-agent QA for any product surface — web apps, messenger Mini Apps (Telegram/MAX), native desktop (macOS), and Android. A "mean tester" pipeline: recon → plan → parallel role attack (visual, logic, data-integrity, edge-cases + white-box code audit) → adversarial completeness gate → report + generated regression tests. Real screenshots, real clicks, real DB checks — never "looks fine". Use whenever the user wants to QA / test an app, find bugs, do a UI or UX audit, check a Mini App, verify data actually persists, or run a thorough pre-release pass. Triggers: qa, testing, test my app, find bugs, audit UI, check the mini app, does the data save, pre-release check.
+description: Adversarial multi-agent QA for any product surface — web apps, messenger Mini Apps (Telegram/MAX), native desktop (macOS), and mobile (iOS & Android). A "mean tester" pipeline: an adaptive setup wizard, then recon → plan → parallel role attack (visual, logic, data-integrity, edge-cases + white-box code audit) → adversarial completeness gate → report + generated regression tests. Real screenshots, real clicks, real DB checks — never "looks fine". Use whenever the user wants to QA / test an app, find bugs, do a UI or UX audit, check a Mini App, verify data actually persists, or run a thorough pre-release pass. Triggers: qa, testing, test my app, find bugs, audit UI, check the mini app, does the data save, pre-release check.
 ---
 
 # Mean-tester QA pipeline
@@ -15,27 +15,27 @@ Five phases. Specialized roles attack the product in parallel with different inc
                                                                                                       menu)
 ```
 
-## Phase 0 — Probe & brief
+## Phase 0 — Probe & the setup wizard
 
-**Probe what's actually available** before offering anything (see `references/environments.md` → Probing). Report each environment as available / unavailable-with-reason. Only offer environments that exist — never promise a driver that isn't connected.
+**Probe first** (see `references/environments.md` → Probing): detect which drivers are actually connected. External MCPs (Appium for mobile, a Windows-automation MCP) are usually NOT installed — when a target needs one, offer the one-line install and degrade; never assume.
 
-Then raise ONE setup menu (`AskUserQuestion`, multi-select where natural). Three preset modes plus custom:
+Then run an **adaptive wizard** — a chain of `AskUserQuestion` calls where each step appears only when the previous answers make it relevant. This is the design tension made explicit: *maximum guidance without friction*. Presets collapse the chain — "Smoke on a web URL" asks 2 questions; "Custom, multi-platform" walks all of it. Never dump every question on someone who just said "test my localhost:3000".
 
-- **Smoke** — 1 gate round, reading roles + one writing pass, key screens only. Fast confidence check.
-- **Deep** (default) — up to 3 gate rounds, all roles, full matrix.
-- **Custom** — reveal the toggles: which **roles** (visual / logic / data / attacker / code-audit), which **environments** (from the probe), **depth** (gate rounds), **red zones**, whether to capture a screenshot per step.
+**The chain** (skip any step whose answer is already known from the user's prompt):
 
-If the environment can't ask (headless, scheduled, sub-agent run) — don't stall: pick **Deep** on the probed environments, and record every assumption as the first lines of the report. The user keeps the right to choose; absence of an answer is not a choice (do not run destructive rows on assumption).
+1. **What are we testing?** — Web app · Mini App · Desktop app · Mobile app · API/backend. This one answer drives which environment/driver applies and which later steps even appear.
+2. **Where is it — and what changed?** — URL(s) / bot handle / app name+path. Plus an *optional* focus: "test everything" vs "focus on what changed" (a git diff, changed screens, a feature area). When they pick focus, thread that scope to recon + planner so the matrix prioritizes changed surfaces first (2026 practice — don't blind-test a huge app when only checkout changed). Off by default.
+3. **How deep?** — **Smoke** (1 gate round, reading roles + one writing pass, key screens) · **Deep** (default; up to 3 rounds, all roles, full matrix) · **Custom**.
+4. *(Custom only)* **Which roles?** — visual · logic · data-integrity · attacker · code-audit (multi-select).
+5. **What can I test with?** — multi-select what they actually have: code repo path · test accounts/sessions · DB read access. Each one absent = that axis degrades loudly, not silently.
+6. **What's off-limits?** — payments · deletes · notifications · custom (multi-select; irreversible actions pre-checked as safe defaults).
+7. *(environment-specific, only if chosen)* — Mobile: which device/simulator, and is Appium MCP set up (offer install if not)? · Windows: is a Windows-automation MCP running on the box (offer setup if not)? · Desktop: which app?
 
-**Brief fields** (ask only for what the chosen modes need; missing → degrade that axis explicitly, never silently):
+Finish with a **one-screen confirm**: target, environments, mode, roles, access, red zones, focus scope — so the user green-lights before anything runs.
 
-- **target(s)** — URL(s), and/or app name for desktop, and/or Mini App bot handle. Fast-fail if a URL target answers nothing.
-- **personas** — test accounts with working sessions/tokens (one per browser role ideally). Messenger OAuth signup can't be reproduced headlessly, so the human prepares personas; the planner only distributes them. Fewer than needed → writing roles serialize (planner decides). Zero → guest smoke of public surfaces only.
-- **code path** — repo root (for recon + architect). Absent → black-box only, white-box marked uncovered, architect off.
-- **DB read access** — SSH host + SELECT-only creds (for data-paranoid). Absent → data axis degrades to UI-consistency only.
-- **red zones** — what must never be touched even in test (default: everything irreversible).
+If the environment can't ask (headless, scheduled, sub-agent run) — don't stall: pick **Deep** on the probed environments with everything the brief already supplies, and record every assumption as the first lines of the report. Absence of an answer is not consent — never run destructive rows on assumption.
 
-> **Degradation rule:** whatever the brief lacks, the matching axis degrades LOUDLY — recorded in `report.md` under "NOT-covered axes". Never a silent 0%.
+> **Degradation rule:** whatever the brief lacks, the matching axis degrades LOUDLY — recorded in `report.md` under "NOT-covered axes". Never a silent 0%. Fast-fail if a URL target answers nothing.
 
 ## Phase 0.5 — Run folder & dispatch model
 
@@ -102,7 +102,7 @@ Full rules in `references/safety.md`. In short: test personas only, "TEST" prefi
 ## Files
 
 - `references/environments.md` — environment decision table, probing, Mini App fidelity levels
-- `references/drivers/*.md` — one per environment (browser-devtools, real-chrome, desktop-native, android-adb, windows)
+- `references/drivers/*.md` — one per environment (browser-devtools, real-chrome, desktop-native, mobile, windows)
 - `references/roles/*.md` — the nine role definitions (source of truth for dispatch)
 - `references/safety.md`, `references/severity.md`
 - `qa-pipeline.workflow.js` — deterministic engine for workflow mode

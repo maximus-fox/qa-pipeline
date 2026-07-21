@@ -12,7 +12,7 @@ A single agent doing QA tends to fail the same way every time: it explores the h
 
 | Phase | What happens |
 |---|---|
-| **0. Probe & brief** | Detects which environments are actually available, then a setup menu: Smoke / Deep / Custom (pick roles, environments, depth, red zones) |
+| **0. Probe & wizard** | Detects which environments are actually connected, then an adaptive setup wizard — Smoke / Deep / Custom, asking only what's relevant (target type, access, red zones, optional "focus on what changed") |
 | **1. Recon** | Builds a map of the product — hybrid of reading the code and walking the live UI. Output: `qa-map.md` |
 | **2. Plan** | Turns the map into an executable coverage matrix; assigns a role, persona, and **environment** per row. Output: `qa-plan.md` |
 | **3. Run** | Four roles work in parallel against the live app, plus a white-box code audit |
@@ -28,8 +28,8 @@ The pipeline tests the surface the product actually ships on. Each has a driver 
 | Web app by URL | `browser-devtools` | Anything with a URL (chrome-devtools MCP, with a Bash+Playwright fallback) |
 | Real login / OAuth / **Mini Apps** | `real-chrome` | The user's live browser sessions — genuine `initData`, real auth |
 | Native desktop (macOS) | `desktop-native` | Electron/Qt/Tauri windows via computer-use |
-| Android app / native Telegram | `android-adb` | Real phone or emulator via `adb` |
-| Windows | `windows` | Honest about what exists (remote UI-automation MCP, or SSH-only degraded) |
+| Mobile — iOS & Android | `mobile` | Appium MCP (both platforms) with a raw-`adb` fallback |
+| Windows | `windows` | A Windows-automation MCP on the box (real UI Automation), with SSH/RDP degraded modes |
 
 **Mini Apps** are handled at the right fidelity: depth in the real web client (`web.telegram.org` — real `initData` with full DOM access), breadth on a native client for WebView-specific behavior. A bare browser on the app URL is treated as a facade only. See `references/environments.md`.
 
@@ -65,7 +65,7 @@ qa-pipeline.workflow.js       # deterministic orchestration (workflow mode)
 references/
   environments.md             # environment decision table, probing, Mini App fidelity
   drivers/                     # one driver per environment
-    browser-devtools.md  real-chrome.md  desktop-native.md  android-adb.md  windows.md
+    browser-devtools.md  real-chrome.md  desktop-native.md  mobile.md  windows.md
   roles/                      # nine role definitions — the source of truth for dispatch
   safety.md  severity.md
 fixtures/mini-app/            # tiny fixture to smoke-test the pipeline itself

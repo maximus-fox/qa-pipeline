@@ -10,7 +10,7 @@ Core loop: `tabs_context_mcp` → `tabs_create_mcp` / `navigate` → `read_page`
 2. Find the bot chat, launch the Mini App (menu button / inline button).
 3. The TMA runs in an iframe: `read_page` sees into it; clicks by ref work; console shows the app's own errors.
 4. `initData`, auth, theme params are REAL — session-dependent screens, payments-adjacent screens (read-only!), role-gated flows all reachable.
-5. Viewport: resize the window to phone width for mobile-layout rows; note that the web client is still platform `weba` — BackButton/haptics/native-keyboard behavior belongs to the native-client cross-check (android-adb / desktop-native).
+5. Viewport: resize the window to phone width for mobile-layout rows; note that the web client is still platform `weba` — BackButton/haptics/native-keyboard behavior belongs to the native-client cross-check (mobile / desktop-native).
 
 ## Safety — this is a real person's browser
 

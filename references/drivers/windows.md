@@ -1,26 +1,31 @@
-# Driver: windows (honest edition)
+# Driver: windows
 
-There is no built-in way to click Windows UI from a non-Windows host. Do not promise Windows UI testing unless one of these is ACTUALLY connected — probe first, degrade loudly otherwise.
+Windows UI can be automated properly — via an MCP that runs **on the Windows machine itself**. There is no way to click Windows UI directly from a non-Windows host, so the topology matters. Probe first; degrade honestly only when no such MCP is reachable.
 
-## Mode A — Windows-automation MCP on the target machine (full UI testing)
+## 1. Windows-automation MCP on the target (primary — real UI testing)
 
-Open-source MCP servers exist that automate Windows UI via UIAutomation/pywinauto (e.g. projects like `Windows-MCP`). They run **on the Windows machine itself**. Two working topologies:
+Mature open-source options drive Windows through the native UI Automation API (real elements, not pixels): [Windows-MCP (CursorTouch)](https://github.com/CursorTouch/Windows-MCP) (MIT, widely used, 16+ tools: Click/Type/Scroll/Shortcut, Screenshot/Snapshot, App control, FileSystem, PowerShell, Registry, Clipboard), also [MCPControl](https://github.com/claude-did-this/MCPControl) and others.
 
-1. **Claude Code runs on the Windows machine** with such an MCP configured locally → this pipeline runs there natively; screenshots, clicks, element trees all local. Simplest and most reliable.
-2. **Remote MCP**: the server runs on Windows exposing HTTP/SSE; your host connects to it over LAN/VPN. Requires the user to install and start it there once. Probe = the MCP's tools are visible in this session.
+It runs on the Windows box. Two working topologies:
 
-If mode A is present: loop mirrors desktop-native (screenshot → locate → click → verify), element trees come from the MCP's inspection tools, artifacts follow the standard run-folder contract, serialized access.
+1. **Claude Code runs on the Windows machine**, MCP configured locally → the whole pipeline runs there natively. Simplest and most reliable.
+2. **Remote**: the MCP runs on Windows exposing SSE/HTTP; your host connects over LAN/VPN. The user installs and starts it there once, e.g.:
+   ```
+   # on the Windows machine (Python 3.13 + uv):
+   uvx windows-mcp serve
+   ```
+   then adds it as a remote MCP in this session. Probe = its tools are visible here.
 
-## Mode B — SSH only (degraded, no UI)
+When present: the loop mirrors desktop-native (screenshot/snapshot → locate element → click → verify), element trees come from the MCP's inspection tools, artifacts follow the standard run-folder contract, serialized access. This closes Windows as a first-class environment — not a degraded one.
 
-With just SSH to a Windows host you can: run the app's CLI/tests, read logs and Event Log (`wevtutil`), query processes/services, copy files, run PowerShell probes, even capture a full-screen screenshot of the console session (`psr` or PowerShell `CopyFromScreen` — works only when a desktop session is active).
+## 2. SSH only (degraded — no UI)
 
-What you CANNOT do: click, type into windows, walk dialogs. All UI matrix rows → `blocked (no UI driver on Windows)`, the visual axis for this target is NOT COVERED, and the report says so in the header. Logic/data axes may still partially run through APIs, DB, and logs.
+With just SSH you can run the app's CLI/tests, read logs and the Event Log (`wevtutil`), query processes/services, run PowerShell probes, and capture a full-screen shot of an active desktop session (PowerShell `CopyFromScreen`). You CANNOT click, type into windows, or walk dialogs → all UI rows `blocked (no UI driver)`, visual axis NOT COVERED for this target, said plainly in the report header. Logic/data axes may still partly run through APIs, DB, and logs.
 
-## Mode C — RDP/VNC window on the controlling Mac (last resort)
+## 3. RDP/VNC window on the controlling Mac (last resort)
 
-If an RDP/VNC client shows the Windows desktop in a macOS window, computer-use can click inside that window. It works, but coordinates are nested, latency is high, and text input is unreliable — use only for a handful of spot-checks, mark every row driven this way, and never call this full coverage.
+If an RDP/VNC client shows the Windows desktop in a macOS window, computer-use can click inside that window. High latency, nested coordinates, flaky text input — a handful of spot-checks only, every such row marked, never called full coverage.
 
 ## Choosing
 
-Probe order: MCP tools present? → mode A. SSH host in brief? → offer B (explaining the UI gap). RDP client running? → C for spot-checks only. Nothing? The environment is unavailable — say exactly that in the setup menu.
+Windows-automation MCP tools present → mode 1/2 (offer the install if the user has a Windows box but hasn't set it up). SSH host in the brief → mode 2, explaining the UI gap. RDP client running → mode 3 spot-checks. Nothing → the environment is unavailable; say exactly that in the wizard.
