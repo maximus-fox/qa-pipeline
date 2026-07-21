@@ -72,6 +72,17 @@ Regression tests go to `e2e/` in the project repo (synth only).
 
 Phase logic is identical in both; only the parallelism engine differs.
 
+### Host-resource guard — serialize browser roles on constrained hardware
+
+Every browser-driven role launches its own Chrome/WebView. Running three or more of them **in parallel against a live dev server** can exhaust RAM and OOM-kill the server under test — a self-inflicted outage that blocks the very rows you were testing (learned the hard way on an 8 GB machine: three concurrent browser roles killed the target's Vite server; the backend survived, so it was clearly memory, not the app). Before Phase 3, size the fan-out to the host:
+
+- **Check available memory** (`memory_pressure` / `free` / `vm_stat`) and whether the target is a **local dev server sharing this machine's RAM** (localhost) vs. a remote host.
+- On a **constrained host (≈≤8 GB) testing a local server**: run browser roles **serially, or cap at 2 at once**. The white-box `architect` role uses no browser — always safe to run alongside. So a good low-RAM shape is: architect in parallel with **one** browser role at a time.
+- On a roomy host or a remote target: the normal small-parallel-batch is fine.
+- If the target server dies mid-run, **diagnose out-of-band** (curl the backend, check the process, check any lock/USB state) to distinguish a crash from a red-zone action (e.g. a shutdown button) — then checkpoint the blocked rows rather than silently reporting them uncovered.
+
+This is a throughput-vs-safety trade the orchestrator makes explicitly; when unsure, prefer serial browser roles — a slower run beats an OOM that voids half the matrix.
+
 ## Phases (detail in `references/roles/<role>.md` — read the role file before dispatching it)
 
 1. **Recon** — `roles/recon.md`. Reads code (what should exist) + walks the live app via the assigned driver (what does exist), reconciles → `qa-map.md`.

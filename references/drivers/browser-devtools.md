@@ -30,7 +30,7 @@ NODE_PATH="$PWPATH" node /tmp/qa-driver.mjs <url> <w>x<h> <out.jpg>
 
 In the script: `chromium.launch({executablePath: <system Chrome path>})` — the bundled chromium is usually absent; on macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, on Linux `google-chrome`/`chromium`. Hook `page.on('console')` and `page.on('response')` to capture errors. Python playwright (`pip`) is an equally valid driver if Node won't resolve — its bundled Chromium usually works.
 
-Each `node` run launches its own Chrome → parallel roles never contend.
+Each `node` run launches its own Chrome → parallel roles never contend for a browser — **but they DO contend for RAM.** Every browser role is a full Chrome; three at once against a local dev server can OOM-kill the server under test. On a constrained host (≈≤8 GB) testing localhost, serialize browser roles or cap at 2 (see SKILL.md → Host-resource guard). The white-box `architect` role has no browser and is always safe to run in parallel.
 
 ## Viewport matrix
 
