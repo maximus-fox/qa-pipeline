@@ -46,7 +46,7 @@ Telegram Android (Appium or adb — NOT the iOS Simulator backend) is the honest
 
 ## Rules
 
-One device = **serialized** access (like desktop-native — the planner must not schedule two roles on it at once). The phone may be the user's real phone: only the target app, test personas only, red zones apply, uninstall nothing. Screenshots land in the run folder with viewport = device model.
+One device = **serialized** access (like desktop-native — the planner must not schedule two roles on it at once). The phone may be the user's real phone: only the target app, test personas only, red zones apply, uninstall nothing. Screenshots land in the run folder with viewport = device model; `.png` from `screencap` is fine — the artifact contract accepts it (see `references/environments.md`).
 
 ## Degradation
 

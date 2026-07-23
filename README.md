@@ -30,6 +30,7 @@ The pipeline tests the surface the product actually ships on. Each has a driver 
 | Native desktop (macOS) | `desktop-native` | Electron/Qt/Tauri windows via computer-use |
 | Mobile — iOS & Android | `mobile` | Appium MCP (both platforms), the built-in iOS Simulator MCP (Claude Code desktop on macOS), or a raw-`adb` fallback |
 | Windows | `windows` | A Windows-automation MCP on the box (real UI Automation), with SSH/RDP degraded modes |
+| API / backend | `api` | curl/httpie request loop with saved transcripts as evidence; visual axis honestly NOT COVERED |
 
 **Mini Apps** get a dedicated protocol (`references/mini-apps.md`): the two Telegram insets (`safeAreaInset` + `contentSafeAreaInset`) and the "buttons under the messenger's own chrome" bug class, a state × platform matrix (collapsed / expanded / fullscreen / keyboard / theme switch), and layered environments — automated overlap detection in a browser with mocked inset variables, depth in the real web client, and the honest verdict on insets/keyboard/gestures only on native clients (Android WebView-debug + CDP attach, iPhone + Safari Web Inspector). MAX (no inset API) and VK specifics included. A bare browser on the app URL is a facade only.
 
@@ -54,6 +55,8 @@ Roles are dispatched **by file** (`references/roles/<role>.md`), run as general-
 - **Loop until dry, not until N.** Coverage is unknown-size, so the gate keeps spawning follow-ups until every gap it raised comes back with evidence and a fresh sweep finds nothing new. Simple counters miss the tail.
 - **Verification beats assertion.** A finding only counts with evidence — a screenshot, a DB row, a real click.
 - **Degrade loudly.** Whatever the brief lacks — code, DB access, a driver — the matching axis is marked NOT COVERED in the report, never a silent 0%.
+- **The user's language, plain words.** Wizard questions, progress updates, and the report are written in the language of the person who launched the run, with every technical term explained — a shop owner and a developer get the same pipeline.
+- **Silence is not consent.** A skipped wizard answer keeps red zones ON, keeps production write-free, and never enables anything destructive.
 - **Read-only by default.** Test roles cannot write to the product; only the synthesizer emits new files (regression tests).
 - **Safety rails** live in `references/safety.md` (test personas only, rate limits, destructive-action bans, extra care on real-profile drivers).
 
@@ -66,7 +69,7 @@ references/
   environments.md             # environment decision table, probing, Mini App fidelity
   mini-apps.md                # Mini App test protocol: insets, state matrix, MAX/VK
   drivers/                     # one driver per environment
-    browser-devtools.md  real-chrome.md  desktop-native.md  mobile.md  windows.md
+    browser-devtools.md  real-chrome.md  desktop-native.md  mobile.md  windows.md  api.md
   roles/                      # nine role definitions — the source of truth for dispatch
   safety.md  severity.md
 fixtures/mini-app/            # fixture with a mocked Telegram.WebApp + seeded visual defects

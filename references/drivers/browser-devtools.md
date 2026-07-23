@@ -18,9 +18,11 @@ Field-tested pitfalls (cost real debugging time — respect them):
 
 `browser_navigate`, `browser_snapshot`, `browser_take_screenshot`, `browser_click`, `browser_evaluate`, `browser_resize`. Caveats: only ONE browser instance per MCP server ("Browser is already in use" → another role holds it; coordinate through the plan, don't fight); in many environments the MCP is "Connected" but non-functional (bundled browser missing) — drop it after one failure, don't retry.
 
-## 3. Bash + playwright (always-available fallback)
+## 3. Bash + playwright (fallback on any host with Node or Python)
 
 Bash is always in the toolset. Write ONE reusable driver script to the scratch dir and call it per page (args: url, viewport, out-path, steps).
+
+macOS / Linux:
 
 ```bash
 PWPATH="$(dirname "$(ls -d ~/.npm/_npx/*/node_modules/playwright 2>/dev/null | head -1)")"
@@ -28,7 +30,9 @@ PWPATH="$(dirname "$(ls -d ~/.npm/_npx/*/node_modules/playwright 2>/dev/null | h
 NODE_PATH="$PWPATH" node /tmp/qa-driver.mjs <url> <w>x<h> <out.jpg>
 ```
 
-In the script: `chromium.launch({executablePath: <system Chrome path>})` — the bundled chromium is usually absent; on macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, on Linux `google-chrome`/`chromium`. Hook `page.on('console')` and `page.on('response')` to capture errors. Python playwright (`pip`) is an equally valid driver if Node won't resolve — its bundled Chromium usually works.
+**Windows host** (the pipeline may legitimately run there — see `drivers/windows.md` topology 1): the unix paths above don't exist. Use the scratch/TEMP dir instead of `/tmp`, install with `npm i --prefix "%TEMP%\pw" playwright`, and Chrome lives at `%ProgramFiles%\Google\Chrome\Application\chrome.exe` or `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`. Mind the shell: Claude Code on Windows may hand you PowerShell or Git-Bash — probe with `echo $SHELL` / `$PSVersionTable` before assuming syntax.
+
+In the script: `chromium.launch({executablePath: <system Chrome path>})` — the bundled chromium is usually absent; on macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, on Linux `google-chrome`/`chromium`, on Windows the paths above. Hook `page.on('console')` and `page.on('response')` to capture errors. **Python playwright (`pip install playwright && playwright install chromium`) is an equally valid driver on all three OSes** and its bundled Chromium usually works — prefer it when Node paths get awkward (common on Windows).
 
 Each `node` run launches its own Chrome → parallel roles never contend for a browser — **but they DO contend for RAM.** Every browser role is a full Chrome; three at once against a local dev server can OOM-kill the server under test. On a constrained host (≈≤8 GB) testing localhost, serialize browser roles or cap at 2 (see SKILL.md → Host-resource guard). The white-box `architect` role has no browser and is always safe to run in parallel.
 

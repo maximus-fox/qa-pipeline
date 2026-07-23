@@ -58,24 +58,44 @@
     if (cs.borderRadius !== '0px') radii.add(cs.borderRadius)
   }
 
-  // interactive targets: size + hit-test (is something covering it?)
-  for (const el of document.querySelectorAll('a,button,input,select,textarea,[role="button"],[onclick],[tabindex]')) {
-    const r = el.getBoundingClientRect()
-    if (!r.width || r.bottom < 0 || r.top > vh) continue
-    if (!visible(el)) continue
-    if (r.width < 24 || r.height < 24)   // WCAG 2.5.8 floor; mobile rubric raises to 44
-      out.smallTargets.push({ el: desc(el), w: Math.round(r.width), h: Math.round(r.height) })
-    const pts = [[r.left + r.width / 2, r.top + r.height / 2],
-                 [r.left + 3, r.top + 3], [r.right - 3, r.bottom - 3]]
-    for (const [x, y] of pts) {
-      if (x < 0 || y < 0 || x > vw || y > vh) continue
-      const hit = document.elementFromPoint(x, y)
-      if (hit && !el.contains(hit) && !hit.contains(el)) {
-        out.covered.push({ el: desc(el), coveredBy: desc(hit) })
-        break
+  // Interactive targets: size + hit-test (is something covering it?). elementFromPoint only sees
+  // the current viewport, so sweep the page in viewport-height steps — otherwise everything below
+  // the first screen is silently unchecked. Layout & hit-testing are synchronous after scrollTo.
+  const targets = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[onclick],[tabindex]')
+  const scroller = document.scrollingElement || de
+  const origScroll = scroller.scrollTop
+  const pageH = scroller.scrollHeight
+  const maxSteps = 30                      // runaway guard for infinite-scroll pages
+  const seenSmall = new Set(), seenCovered = new Set()
+  for (let step = 0, y = 0; y < pageH && step < maxSteps; step++, y += vh) {
+    scroller.scrollTop = y
+    for (const el of targets) {
+      const r = el.getBoundingClientRect()
+      if (!r.width || r.bottom < 0 || r.top > vh) continue
+      if (!visible(el)) continue
+      if ((r.width < 24 || r.height < 24) && !seenSmall.has(el)) {  // WCAG 2.5.8 floor; mobile rubric raises to 44
+        seenSmall.add(el)
+        out.smallTargets.push({ el: desc(el), w: Math.round(r.width), h: Math.round(r.height) })
+      }
+      if (seenCovered.has(el)) continue
+      // hit-test only when the element is FULLY in view at this step — an element straddling the
+      // viewport edge sits "under" a sticky header by normal scrolling, not by a layout bug
+      if (r.top < 0 || r.bottom > vh) continue
+      const pts = [[r.left + r.width / 2, r.top + r.height / 2],
+                   [r.left + 3, r.top + 3], [r.right - 3, r.bottom - 3]]
+      for (const [x, py] of pts) {
+        if (x < 0 || py < 0 || x > vw || py > vh) continue
+        const hit = document.elementFromPoint(x, py)
+        if (hit && !el.contains(hit) && !hit.contains(el)) {
+          seenCovered.add(el)
+          out.covered.push({ el: desc(el), coveredBy: desc(hit) })
+          break
+        }
       }
     }
   }
+  scroller.scrollTop = origScroll
+  if (pageH > vh * maxSteps) out.scanNote = `page taller than ${maxSteps} viewports — interactive checks capped at ${maxSteps * vh}px`
 
   out.styleDrift = {
     uniqueFontSizes: fontSizes.size, fontSizes: [...fontSizes].slice(0, 20),

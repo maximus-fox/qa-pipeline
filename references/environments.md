@@ -11,7 +11,9 @@ The pipeline tests **whatever surface the product actually ships on** — not ju
 | Native desktop (macOS) | **desktop-native** | computer-use MCP |
 | **Mobile — iOS & Android, native apps and Mini Apps in native clients** | **mobile** | Appium MCP (primary, both platforms) → raw `adb` (Android-only fallback) |
 | Windows app | **windows** | Windows-MCP (or similar) on the Windows box → SSH/RDP degraded |
-| No UI (API service, bot backend) | curl/httpie + DB | visual axis NOT COVERED; logic/data still run |
+| No UI (API service, bot backend) | **api** | curl/httpie + DB; visual axis NOT COVERED, logic/data/attacker run on requests |
+| CLI tool | Bash (run the binary, assert stdout/stderr/exit codes/files) | visual axis n/a; no dedicated driver file — the planner writes the invocation contract into the rows |
+| Native desktop (Linux) | — none in this skill | rows `blocked (no driver)`, said in the wizard up front |
 
 Several environments can run in one pipeline (e.g. web admin via browser-devtools + resident Mini App via real-chrome). The planner assigns an environment per matrix row.
 
@@ -21,7 +23,7 @@ Before the setup wizard, probe what's actually available and only offer what exi
 
 | Environment | Probe | If missing |
 |---|---|---|
-| browser-devtools | chrome-devtools OR playwright MCP tools present; else Bash+playwright | always available via Bash fallback |
+| browser-devtools | chrome-devtools OR playwright MCP tools present; else Bash+playwright | fallback works on any host with Node or Python — per-OS paths (incl. Windows) in the driver file |
 | real-chrome | claude-in-chrome MCP present AND Chrome running with the extension | offer to connect the extension |
 | desktop-native | computer-use MCP present (macOS host) | unavailable off-macOS |
 | mobile | Appium MCP tools present? built-in iOS Simulator MCP (`mcp__Claude_Code_iOS_Simulator__*`, Claude Code desktop on macOS)? else `adb devices` lists a device? | offer `claude mcp add appium-mcp -- npx -y appium-mcp@latest` (iOS+Android) or `adb` (Android only); else unavailable |
@@ -43,10 +45,11 @@ Rule of thumb: **depth in the web client, insets and gestures only on a native c
 
 ## Driver files
 
-- `drivers/browser-devtools.md` — chrome-devtools MCP (primary), playwright MCP, Bash+playwright fallback.
+- `drivers/browser-devtools.md` — chrome-devtools MCP (primary), playwright MCP, Bash+playwright fallback (per-OS notes incl. Windows hosts).
 - `drivers/real-chrome.md` — claude-in-chrome: live sessions, Mini Apps, real-profile safety.
 - `drivers/desktop-native.md` — computer-use on macOS.
-- `drivers/mobile.md` — Appium MCP (iOS+Android) primary; raw adb fallback.
+- `drivers/mobile.md` — Appium MCP (iOS+Android), built-in iOS Simulator MCP, raw adb fallback.
 - `drivers/windows.md` — Windows-MCP on the target machine; SSH/RDP degraded modes.
+- `drivers/api.md` — curl/httpie request loop for UI-less targets: auth, evidence transcripts, contract.
 
-Every driver ends with the same contract: produce `<NN>-<screen>-<viewport>.jpg` artifacts in the run folder, and report "this driver failed" as an explicit fast-fail with a reason — never a silent 0% coverage.
+Every driver ends with the same contract: produce `<NN>-<screen>-<context>.jpg` artifacts in the run folder (`<context>` = viewport, device, or state; `.png` acceptable where the tool only emits PNG — adb screencap, some MCPs — the gate treats both as evidence), and report "this driver failed" as an explicit fast-fail with a reason — never a silent 0% coverage. UI-less drivers (api) substitute request/response transcripts for screenshots.

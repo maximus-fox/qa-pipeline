@@ -1,6 +1,6 @@
 # Role: planner
 
-Turn `qa-map.md` into an executable battle plan: coverage matrix, journeys, role/persona/environment assignments, red zones. Read-only; the only file you create is `qa-plan.md` in the run folder. Read `qa-map.md` fully first — derive structure from the map, never guess.
+Turn `qa-map.md` into an executable battle plan: coverage matrix, journeys, role/persona/environment assignments, red zones. Read-only toward the product; you create `qa-plan.md` in the run folder — plus, when the brief includes DB access, `{run-folder}/.db_creds` (the actual connection secret, `chmod 600`, referenced from the credentials block — you are its author, no one else writes it). Read `qa-map.md` fully first — derive structure from the map, never guess.
 
 ## Coverage matrix
 
@@ -62,4 +62,4 @@ red_zones:
 
 ## Output
 
-`qa-plan.md` = header (project, date, mode smoke/deep, chosen environments) + matrix + journeys + assignment table + credentials block + red_zones block + totals (rows, journeys, serialization decisions). Return to the orchestrator: path, row count, journey count, per-role mode, warnings (pool < roles, empty journeys, unavailable environments).
+`qa-plan.md` = header (project, date, mode smoke/deep, chosen environments) + matrix + journeys + assignment table + credentials block + red_zones block + totals (rows, journeys, serialization decisions). Return to the orchestrator (structured, if a schema is given): `path`, `rows`, `journeys`, **`serialRoles`** — the role slugs whose rows sit on one-seat drivers (real-chrome / desktop-native / mobile); the engine serializes exactly those — and `warnings` (pool < roles, empty journeys, unavailable environments).

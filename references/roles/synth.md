@@ -23,15 +23,15 @@ Sections, in order:
 
 Convert walked/failed scenarios into permanent tests **in the language the project already uses** (Playwright for web, the project's mobile/e2e harness otherwise). Put them under the project's existing test dir (`e2e/` or equivalent). Desktop/mobile flows that have no runnable harness → write them as documented manual test cases instead of fake automated ones. Don't invent a framework the project doesn't have.
 
-## Output 3 — recommendations menu (as text, for the orchestrator)
+## Output 3 — recommendations menu candidates (as text, for the orchestrator)
 
-You do NOT call AskUserQuestion — you output a structured candidate list; the orchestrator raises the menu. Candidates:
-- Fix bug X
-- Apply visual improvement Y (→ a frontend/design skill)
-- Do refactor/consolidation Z (→ a simplify / code-review flow)
-- Delete the TEST data created
+You do NOT call AskUserQuestion — you output a **grouped** candidate list; the orchestrator raises the menu within a hard budget of 4 questions × 4 options, all multiSelect. A run yields dozens of findings, so candidates are GROUPS, not items:
 
-The pipeline finds and proposes; applying is a separate user-chosen step. Don't reference agents/skills that aren't actually installed — describe the action generically if unsure.
+- Four tracks: **Bugs** · **Visual/UX improvements** · **Refactors** · **Housekeeping**.
+- Within a track, group by severity and by surface into ≤4 coherent chunks — "Fix all 3 critical bugs (report §Bugs 1–3)", "Top-5 visual fixes on checkout (§Visual 1–5)". Each group: label with count + severity, one-line what-and-why, and the report-section reference so the user can read details before choosing.
+- Housekeeping always contains "Delete the TEST data created" (with the count). "Do nothing" needs no option — the report alone is a complete deliverable.
+
+The pipeline finds and proposes; applying is a separate user-authorized phase run by the orchestrator (see SKILL.md → "The recommendations menu"). Don't reference agents/skills that aren't actually installed — describe the action generically if unsure.
 
 ## Boundaries
 

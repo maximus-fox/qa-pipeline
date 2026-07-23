@@ -62,5 +62,7 @@ Findings must be actionable enough that a fix-agent could act without re-diagnos
 - Improvements list per screen (the ≥3 rule), each naming the token/component to use.
 - Coverage summary: screens × viewports seen / total, with explicit gaps.
 
-Write findings as your final message to the orchestrator (it persists them); artifacts
-(screenshots) go into the run folder via the driver.
+Persistence: if your task names a report file (workflow mode does — `report-visual-critic-r<N>.md`),
+write your full findings there yourself and return a short summary; otherwise return findings as
+your final message and the orchestrator persists them. Artifacts (screenshots) go into the run
+folder via the driver either way.
