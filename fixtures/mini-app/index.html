@@ -1,9 +1,56 @@
 <!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mini Fixture</title>
+<script>
+// Mock Telegram.WebApp — enough surface for the pipeline's Layer-1 checks (references/mini-apps.md).
+// Seeded values ≈ iPhone with a notch, expanded TMA.
+(function () {
+  const listeners = {}
+  const W = {
+    initData: 'query_id=FIXTURE&user=%7B%22id%22%3A1%7D&hash=deadbeef',
+    initDataUnsafe: { user: { id: 1, first_name: 'Fixture' } },
+    platform: 'ios', version: '8.0', colorScheme: 'light',
+    themeParams: { bg_color: '#ffffff', text_color: '#111111', button_color: '#3b5bdb', button_text_color: '#ffffff', hint_color: '#b9bec8' },
+    viewportHeight: 780, viewportStableHeight: 780, isExpanded: true, isFullscreen: false,
+    safeAreaInset: { top: 47, bottom: 34, left: 0, right: 0 },
+    contentSafeAreaInset: { top: 46, bottom: 0, left: 0, right: 0 },
+    expand() { this.isExpanded = true; emit('viewportChanged', { isStateStable: true }) },
+    requestFullscreen() { this.isFullscreen = true; emit('fullscreenChanged') },
+    exitFullscreen() { this.isFullscreen = false; emit('fullscreenChanged') },
+    onEvent(n, f) { (listeners[n] = listeners[n] || []).push(f) },
+    offEvent(n, f) { listeners[n] = (listeners[n] || []).filter(x => x !== f) },
+    ready() {}, close() {},
+  }
+  function emit(n, p) { (listeners[n] || []).forEach(f => f(p)) }
+  window.Telegram = { WebApp: W }
+  const s = document.documentElement.style
+  s.setProperty('--tg-safe-area-inset-top', W.safeAreaInset.top + 'px')
+  s.setProperty('--tg-safe-area-inset-bottom', W.safeAreaInset.bottom + 'px')
+  s.setProperty('--tg-content-safe-area-inset-top', W.contentSafeAreaInset.top + 'px')
+  s.setProperty('--tg-viewport-stable-height', W.viewportStableHeight + 'px')
+})()
+</script>
 <style>:root{--brand:#3b5bdb;--space:8px}body{font-family:system-ui;margin:0;padding:var(--space)}
 .btn{background:var(--brand);color:#fff;border:0;padding:8px 16px;border-radius:8px}
-.dead{opacity:.6}</style></head>
-<body><h1>Тест-форма</h1>
+.dead{opacity:.6}
+/* SEEDED BUG 1 (unsafe-band): header pinned to top:0, ignores --tg-*-inset-top → sits under Telegram chrome */
+.appbar{position:fixed;top:0;left:0;right:0;background:var(--brand);color:#fff;padding:10px 12px;display:flex;justify-content:space-between}
+/* SEEDED BUG 2 (target-size): 20×20 icon button */
+.icon{width:20px;height:20px;padding:0;border:0;background:#fff;color:var(--brand);border-radius:4px;font-size:11px}
+/* SEEDED BUG 3 (truncation): fixed-width clipped text */
+.clip{width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* SEEDED BUG 4 (contrast): hint below WCAG AA on white */
+.hint{color:#c7cbd4;font-size:13px}
+/* SEEDED BUG 5 (overflow): banner wider than any phone viewport */
+.banner{width:520px;background:#eef;padding:8px}
+main{margin-top:64px}</style></head>
+<body>
+<header class="appbar"><span>Mini Fixture</span><button class="icon" onclick="">×</button></header>
+<main>
+<h1>Тест-форма</h1>
+<p class="clip">Очень длинная подпись, которая обязательно обрежется на узком экране</p>
+<p class="hint">Подсказка, которую почти не видно</p>
+<div class="banner">Баннер шире вьюпорта</div>
 <form><input id="name" placeholder="Имя"><button class="btn" type="submit">Отправить</button></form>
-<button class="btn dead" onclick="">Не работает</button></body></html>
+<button class="btn dead" onclick="">Не работает</button>
+</main></body></html>

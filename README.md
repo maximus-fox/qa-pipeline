@@ -16,7 +16,7 @@ A single agent doing QA tends to fail the same way every time: it explores the h
 | **1. Recon** | Builds a map of the product — hybrid of reading the code and walking the live UI. Output: `qa-map.md` |
 | **2. Plan** | Turns the map into an executable coverage matrix; assigns a role, persona, and **environment** per row. Output: `qa-plan.md` |
 | **3. Run** | Four roles work in parallel against the live app, plus a white-box code audit |
-| **4. Completeness gate** | An adversarial critic hunts for gaps and "OK without a real click", then loops back with follow-up work until two rounds come back dry |
+| **4. Completeness gate** | An adversarial critic hunts for gaps and "OK without a real click", then loops back — re-running only the roles that have follow-up work — until every gap comes back with evidence and a fresh sweep finds nothing new |
 | **5. Synthesis** | Merges everything into `report.md` — bugs by severity, coverage %, and generated regression tests |
 
 ## Environments
@@ -28,10 +28,10 @@ The pipeline tests the surface the product actually ships on. Each has a driver 
 | Web app by URL | `browser-devtools` | Anything with a URL (chrome-devtools MCP, with a Bash+Playwright fallback) |
 | Real login / OAuth / **Mini Apps** | `real-chrome` | The user's live browser sessions — genuine `initData`, real auth |
 | Native desktop (macOS) | `desktop-native` | Electron/Qt/Tauri windows via computer-use |
-| Mobile — iOS & Android | `mobile` | Appium MCP (both platforms) with a raw-`adb` fallback |
+| Mobile — iOS & Android | `mobile` | Appium MCP (both platforms), the built-in iOS Simulator MCP (Claude Code desktop on macOS), or a raw-`adb` fallback |
 | Windows | `windows` | A Windows-automation MCP on the box (real UI Automation), with SSH/RDP degraded modes |
 
-**Mini Apps** are handled at the right fidelity: depth in the real web client (`web.telegram.org` — real `initData` with full DOM access), breadth on a native client for WebView-specific behavior. A bare browser on the app URL is treated as a facade only. See `references/environments.md`.
+**Mini Apps** get a dedicated protocol (`references/mini-apps.md`): the two Telegram insets (`safeAreaInset` + `contentSafeAreaInset`) and the "buttons under the messenger's own chrome" bug class, a state × platform matrix (collapsed / expanded / fullscreen / keyboard / theme switch), and layered environments — automated overlap detection in a browser with mocked inset variables, depth in the real web client, and the honest verdict on insets/keyboard/gestures only on native clients (Android WebView-debug + CDP attach, iPhone + Safari Web Inspector). MAX (no inset API) and VK specifics included. A bare browser on the app URL is a facade only.
 
 ## The roles
 
@@ -42,7 +42,7 @@ The pipeline tests the surface the product actually ships on. Each has a driver 
 | `logic` | End-to-end journeys — state conflicts, cancel-and-retry, refresh mid-flow, multi-actor sequences |
 | `attacker` | Edge cases — double clicks, empty input, injection strings, huge text, offline, races |
 | `data-paranoid` | Verifies the DB after every action; cross-effects between screens and users; privilege leaks via ID/slug swapping |
-| `visual-critic` | Real screenshots per viewport, judged against the project's own design system; ≥3 improvements per screen |
+| `visual-critic` | Geometry scan from the DOM (overlaps, overflow px, clipped text, touch targets, unsafe bands) + axe-core, then real screenshots judged against the project's design system — or a universal bar when there is none; ≥3 improvements per screen in the project's own tokens |
 | `architect` | White-box code health — duplicated logic, dead code, multiple sources of truth |
 | `completeness-gate` | Adversarially re-checks anything marked "tested"; loops until dry |
 | `synth` | Assembles the report and writes regression tests |
@@ -51,7 +51,7 @@ Roles are dispatched **by file** (`references/roles/<role>.md`), run as general-
 
 ## Design notes
 
-- **Loop until dry, not until N.** Coverage is unknown-size, so the gate keeps spawning follow-ups until two consecutive rounds surface nothing new. Simple counters miss the tail.
+- **Loop until dry, not until N.** Coverage is unknown-size, so the gate keeps spawning follow-ups until every gap it raised comes back with evidence and a fresh sweep finds nothing new. Simple counters miss the tail.
 - **Verification beats assertion.** A finding only counts with evidence — a screenshot, a DB row, a real click.
 - **Degrade loudly.** Whatever the brief lacks — code, DB access, a driver — the matching axis is marked NOT COVERED in the report, never a silent 0%.
 - **Read-only by default.** Test roles cannot write to the product; only the synthesizer emits new files (regression tests).
@@ -64,12 +64,15 @@ SKILL.md                      # entry point: probe, brief menu, dispatch, phases
 qa-pipeline.workflow.js       # deterministic orchestration (workflow mode)
 references/
   environments.md             # environment decision table, probing, Mini App fidelity
+  mini-apps.md                # Mini App test protocol: insets, state matrix, MAX/VK
   drivers/                     # one driver per environment
     browser-devtools.md  real-chrome.md  desktop-native.md  mobile.md  windows.md
   roles/                      # nine role definitions — the source of truth for dispatch
   safety.md  severity.md
-fixtures/mini-app/            # tiny fixture to smoke-test the pipeline itself
-tools/lint_agent.py
+fixtures/mini-app/            # fixture with a mocked Telegram.WebApp + seeded visual defects
+tools/
+  visual-scan.js              # DOM geometry defect scan (inject via any driver's evaluate)
+  lint_agent.py
 ```
 
 ## Requirements

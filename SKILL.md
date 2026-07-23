@@ -58,7 +58,7 @@ This keeps the skill **self-contained**: it works for anyone who installs it, wi
 |------|--------|----------|
 | `qa-map.md` | recon | Full product map: screens, controls, journeys, viewports, design system |
 | `qa-plan.md` | planner | Coverage matrix, role/persona/environment assignment, credentials & red-zone blocks |
-| `report-<role>.md` | orchestrator (persists each role's output) | Raw Phase-3 output per role — input to gate and synth |
+| `report-<role>[-r<N>].md` | the role itself (workflow mode) or the orchestrator (normal mode) | Raw Phase-3 output per role/round — gate and synth read these from disk, never from pasted prompt text |
 | `report.md` | synth | Final report |
 | `<NN>-<screen>-<viewport>.jpg` | browser/desktop/mobile roles | Screenshots via the assigned driver |
 
@@ -66,7 +66,7 @@ Regression tests go to `e2e/` in the project repo (synth only).
 
 ## Execution engine
 
-**Workflow mode** (when ultracode is on, or the user asks for "workflow"/"orchestration"): the orchestrator calls `qa-pipeline.workflow.js` for deterministic Phase-3 parallelism, real loop-until-dry, and agent-count scaling by budget.
+**Workflow mode** (when ultracode is on, or the user asks for "workflow"/"orchestration"): the orchestrator calls `qa-pipeline.workflow.js` for deterministic Phase-3 parallelism, real loop-until-dry, and agent-count scaling by budget. The orchestrator MUST pass `browserConcurrency` (from the host check below) and `serialRoles` (roles whose rows sit on one-seat drivers, from the planner's assignment) — the engine enforces the resource guard and one-seat serialization with them; omitting them on a weak host recreates the OOM this guard exists to prevent.
 
 **Normal mode** (default): the orchestrator drives roles via the Agent tool — Phases 1–2 sequential, Phase 3 in small parallel batches (as budget allows), Phase 4 looped by hand.
 
@@ -88,13 +88,13 @@ This is a throughput-vs-safety trade the orchestrator makes explicitly; when uns
 1. **Recon** — `roles/recon.md`. Reads code (what should exist) + walks the live app via the assigned driver (what does exist), reconciles → `qa-map.md`.
 2. **Plan** — `roles/planner.md`. Map → coverage matrix; assigns role + persona + **environment** per row; credentials and red zones as machine-readable blocks in `qa-plan.md`.
 3. **Run** (parallel) — the four browser/app roles each under their persona and row-assigned driver, plus the white-box audit:
-   - `roles/visual-critic.md` — real screenshots per viewport, judged against the project's own design system, ≥3 improvements per screen.
+   - `roles/visual-critic.md` — geometry scan from the DOM first (`tools/visual-scan.js`: overlaps, overflow px, clipped text, touch targets, unsafe bands) + axe-core, then real screenshots per viewport judged against the project's design system (or the universal bar when there is none), ≥3 improvements per screen in the project's tokens.
    - `roles/logic.md` — end-to-end journeys, state conflicts, interruptions, multi-actor.
    - `roles/data-paranoid.md` — DB verified after every action; privilege isolation.
    - `roles/attacker.md` — edge cases and input abuse.
    - `roles/architect.md` — white-box code health (no browser).
    The orchestrator saves each role's output to `report-<role>.md` (roles are read-only toward the product; the orchestrator persists their text) and passes those to the gate and synth.
-4. **Gate** — `roles/completeness-gate.md`. Loop-until-dry: hunts gaps and "OK without a real click", dispatches follow-up work to the right roles, stops when two rounds come back dry or the cap (smoke 1 / deep 3) hits. Re-round output is appended to `report-<role>.md` under `--- Round N ---`.
+4. **Gate** — `roles/completeness-gate.md`. Loop-until-dry: hunts gaps and "OK without a real click", dispatches follow-up work to ONLY the roles that have it (a follow-up round re-runs those roles, never the whole fleet), and declares `complete` only when every earlier follow-up came back with evidence AND a fresh sweep finds nothing new — that double condition is "dry". Cap: smoke 1 round / deep 3. Follow-up output lands in `report-<role>-r<N>.md`.
 5. **Synth** — `roles/synth.md`. Merges into `report.md`, generates regression tests in the project's own test harness, emits a recommendations menu as text. The orchestrator (not synth) raises `AskUserQuestion` for the menu.
 
 ## Fast-fail
@@ -113,8 +113,10 @@ Full rules in `references/safety.md`. In short: test personas only, "TEST" prefi
 ## Files
 
 - `references/environments.md` — environment decision table, probing, Mini App fidelity levels
+- `references/mini-apps.md` — Mini App test protocol: the two insets, state × platform matrix, layered environments (browser emulation / web client / native clients), MAX & VK specifics. Read for ANY Mini App target.
 - `references/drivers/*.md` — one per environment (browser-devtools, real-chrome, desktop-native, mobile, windows)
 - `references/roles/*.md` — the nine role definitions (source of truth for dispatch)
 - `references/safety.md`, `references/severity.md`
+- `tools/visual-scan.js` — DOM geometry defect scan (inject via any driver's evaluate)
 - `qa-pipeline.workflow.js` — deterministic engine for workflow mode
-- `fixtures/mini-app/` — tiny sample app to smoke-test the pipeline itself
+- `fixtures/mini-app/` — sample Mini App with a mocked Telegram.WebApp and seeded visual defects, to smoke-test the pipeline itself

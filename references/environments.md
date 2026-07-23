@@ -24,7 +24,7 @@ Before the setup wizard, probe what's actually available and only offer what exi
 | browser-devtools | chrome-devtools OR playwright MCP tools present; else Bash+playwright | always available via Bash fallback |
 | real-chrome | claude-in-chrome MCP present AND Chrome running with the extension | offer to connect the extension |
 | desktop-native | computer-use MCP present (macOS host) | unavailable off-macOS |
-| mobile | Appium MCP tools present? else `adb devices` lists a device? | offer `claude mcp add appium-mcp -- npx -y appium-mcp@latest` (iOS+Android) or `adb` (Android only); else unavailable |
+| mobile | Appium MCP tools present? built-in iOS Simulator MCP (`mcp__Claude_Code_iOS_Simulator__*`, Claude Code desktop on macOS)? else `adb devices` lists a device? | offer `claude mcp add appium-mcp -- npx -y appium-mcp@latest` (iOS+Android) or `adb` (Android only); else unavailable |
 | windows | a Windows-automation MCP connected? else SSH host in brief? | point to Windows-MCP (`uvx windows-mcp serve` on the Windows box, connect over SSE); else SSH-degraded |
 | DB / code access | from the brief | degrade the matching axis loudly |
 
@@ -32,13 +32,14 @@ Report the probe inside the wizard — "available: X, Y; unavailable: Z (reason 
 
 ## Mini Apps: which environment is *correct*?
 
-A Mini App is a web app embedded in a messenger. Three fidelity levels:
+A Mini App is a web app embedded in a messenger. **Full protocol — insets, state × platform matrix, per-check environment honesty — in `references/mini-apps.md`; read it for any Mini App target.** The fidelity ladder in brief:
 
-1. **Real messenger web client — `real-chrome` on `web.telegram.org` / MAX web (PRIMARY).** Genuine `initData`, real auth, real theme — while you keep full DOM access (precise clicks, console, network). Highest bug yield per minute. Most Mini App testing happens here.
-2. **Real native client — `mobile` (Telegram Android via Appium) or `desktop-native` (Telegram Desktop) (CROSS-CHECK).** The true WebView: safe-area insets, keyboard overlap, BackButton, viewport events. Slower, so cross-check key/SDK-dependent flows, not the whole matrix.
-3. **Bare browser on the app URL (FACADE ONLY).** No SDK, no `initData` — auth-dependent screens unreachable or mocked. OK for public-screen layout smoke only; mark every SDK-dependent row NOT COVERED if that's all you have.
+1. **Real messenger web client — `real-chrome` on `web.telegram.org` / MAX web (PRIMARY for logic/data).** Genuine `initData`, real auth, real theme, full DOM. But insets are ~0 there and there's no floating messenger chrome — the whole "buttons under Telegram's header" class is INVISIBLE in this layer.
+2. **Real native client — `mobile` (Telegram Android: WebView-debug + CDP attach, see mini-apps.md) or `desktop-native` (Telegram Desktop/macOS beta) (the only honest verdict on insets/keyboard/gestures/fullscreen).** Slower, so cross-check the state matrix and SDK-dependent flows, not everything.
+3. **Browser with a mocked SDK + inset variables (AUTOMATED overlap catch).** Not a facade when done right: set `--tg-safe-area-inset-*`/`--tg-content-safe-area-inset-*` to realistic values and run the geometry scan — proves the app *consumes* the insets. Reported as `partial (layer 1)`, never as device coverage.
+4. **Bare browser on the app URL (FACADE ONLY).** No SDK, no `initData` — public-screen layout smoke only; SDK-dependent rows NOT COVERED if that's all you have.
 
-Rule of thumb: **depth in the web client, breadth on a native client.**
+Rule of thumb: **depth in the web client, insets and gestures only on a native client, emulation for regression.**
 
 ## Driver files
 

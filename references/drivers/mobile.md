@@ -1,6 +1,6 @@
 # Driver: mobile (iOS & Android)
 
-Two backends, in preference order. Appium MCP is the clean primary — one tool for both platforms with real element trees; raw `adb` is the Android-only no-install fallback.
+Three backends. Appium MCP is the clean cross-platform primary (real element trees, both OSes); the built-in iOS Simulator MCP is the zero-install iOS path when the host is Claude Code desktop on a Mac; raw `adb` is the Android-only no-install fallback.
 
 ## 1. Appium MCP (primary — iOS + Android)
 
@@ -16,7 +16,13 @@ Prerequisites (state them honestly when offering): Node 22+, JDK; **Android** ne
 
 Loop: select device/session → read UI hierarchy (locator or opt-in vision) → tap/swipe/type by element → screenshot per step into the run folder. App control: install/launch/terminate the build under test; deep-link for Mini App / route entry.
 
-## 2. Raw adb (fallback — Android only, no install)
+## 2. Built-in iOS Simulator MCP (iOS native apps, zero install)
+
+Claude Code desktop on macOS ships an iOS Simulator server: `mcp__Claude_Code_iOS_Simulator__build` (headless `xcodebuild` of a project/workspace → `.app` path) and `mcp__Claude_Code_iOS_Simulator__control` (`attach` live panel, `launch` an .app, `screenshot`, `tap`/`swipe`/`text`/`button`, `open_url` deep links). Probe: are those tools present? If yes, this beats installing Appium for **native iOS apps built from source**: build → `attach` (so the user can watch) → `launch` → drive by coordinates from screenshots.
+
+Honest limits: coordinates-only (no element tree — screenshot, look, tap); simulator ≠ device (no push, no real camera/NFC, different performance); and **App Store apps do not install into a simulator** — so Telegram, and therefore Mini Apps inside it, are out of reach here (see `references/mini-apps.md` for the real iOS path: physical iPhone + Safari Web Inspector). Use this backend for the project's own iOS app, not for messenger-resident surfaces.
+
+## 3. Raw adb (fallback — Android only, no install)
 
 When Appium MCP isn't present but `adb devices` lists a device/emulator, drive Android directly over Bash:
 
@@ -36,7 +42,7 @@ Find elements by the `uiautomator` dump (`text`/`resource-id`/`bounds`), compute
 
 ## Mini Apps on a native client
 
-Telegram Android (via either backend) is the honest TMA WebView environment: safe-area, native keyboard overlap, hardware Back. Use as CROSS-CHECK breadth after depth in real-chrome (see `references/environments.md` → Mini Apps).
+Telegram Android (Appium or adb — NOT the iOS Simulator backend) is the honest TMA WebView environment: safe-area insets, native keyboard overlap, hardware Back. Best of both worlds: enable Telegram's WebView debug and attach over CDP (`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`) — full DOM/console/geometry-scan on the real WebView while this driver handles input. Recipe and the full state matrix: `references/mini-apps.md`.
 
 ## Rules
 
